@@ -28,7 +28,7 @@ pub fn parse_status_update(input: &[u8]) -> IResult<&[u8], GamePacket> {
 }
 
 pub fn parse_packet(packet: &[u8]) -> Result<GamePacket, Box<dyn std::error::Error + '_>> {
-    let (_, packet) = alt((parse_status_update,))(packet)?;
+    let (_, packet) = alt((parse_status_update,parse_register))(packet)?;
 
     Ok(packet)
 }

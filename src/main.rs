@@ -18,7 +18,7 @@ fn main() {
     log::info!("Server listening on {PORT}");
 
     let mut player_connections = Vec::new();
-    let mut buffer = [0; 3000];
+    let mut buffer = [0u8; 3000];
     loop {
         let (count, src) = match socket.recv_from(&mut buffer) {
             Ok(res) => res,
@@ -49,12 +49,13 @@ fn main() {
 }
 
 fn handle_packet(packet: GamePacket, socket: &UdpSocket, src: &SocketAddr, player_connections: &mut Vec<PlayerConnection>) -> anyhow::Result<()> {
+    use GamePacket::*;
     match packet {
-        GamePacket::Register(RegisterPacket { player_id }) => {
+        Register(RegisterPacket { player_id }) => {
             player_connections.push(PlayerConnection::new(player_id, *src));
             log::info!("Registered new player with id {player_id} and ip address {src}");
         }
-        GamePacket::StatusUpdate(status) => {
+        StatusUpdate(status) => {
             let statsu_data = status.binary_data();
             for player in player_connections.iter().filter(|p| p.address != *src) {
                 match socket.send_to(&statsu_data, player.address) {

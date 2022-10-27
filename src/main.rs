@@ -2,7 +2,7 @@ use std::{io, net::{UdpSocket, SocketAddr}};
 
 use simplelog::TermLogger;
 
-use crate::{parser::parse_packet, models::{GamePacket, RegisterPacket, PlayerConnection}};
+use crate::{parser::parse_packet, models::{GamePacket, PlayerConnection}};
 
 pub mod models;
 pub mod parser;
@@ -37,8 +37,6 @@ fn main() {
             }
         };
 
-        log::info!("Received {count} bytes from {src}");
-
         match handle_packet(packet, &socket, &src, &mut player_connections) {
             Ok(()) => (),
             Err(e) => {
@@ -51,25 +49,42 @@ fn main() {
 fn handle_packet(packet: GamePacket, socket: &UdpSocket, src: &SocketAddr, player_connections: &mut Vec<PlayerConnection>) -> anyhow::Result<()> {
     use GamePacket::*;
     match packet {
-        Register(RegisterPacket { player_id }) => {
+        Register => {
+            let last_player_id = player_connections.last().map(|p| p.player_id).unwrap_or(0);
+            let player_id = last_player_id + 1;
             player_connections.push(PlayerConnection::new(player_id, *src));
             log::info!("Registered new player with id {player_id} and ip address {src}");
+            try_send_packet(socket, src, &GamePacket::Inform { player_id });
         }
         StatusUpdate(status) => {
-            let statsu_data = status.binary_data();
             for player in player_connections.iter().filter(|p| p.address != *src) {
-                match socket.send_to(&statsu_data, player.address) {
-                    Ok(_) => (),
-                    Err(e) => {
-                        log::error!("Failed to send packet to {}. Error: {e}", &player.address);
-                    }
-                }
+                try_send_packet(socket, &player.address, &GamePacket::StatusUpdate(status.clone()));
             }
-            log::info!("Sent status update to all players");
         }
+        End { player_id } => {
+            player_connections.retain(|p| p.player_id != player_id);
+
+            for player in player_connections.iter().filter(|p| p.player_id != player_id) {
+                let drop_packet = GamePacket::DropPlayer { player_id };
+                try_send_packet(socket, &player.address, &drop_packet);
+            }
+            log::info!("Ended connection with player {player_id} at {src}");
+            log::info!("Player count is now {}", player_connections.len());
+        }
+        // This should never be sent to the server
+        DropPlayer { .. } | Inform { .. } => (),
     }
 
     Ok(())
+}
+
+fn try_send_packet(socket: &UdpSocket, addr: &SocketAddr, packet: &GamePacket) {
+    match socket.send_to(&packet.binary_data(), addr) {
+        Ok(_) => (),
+        Err(e) => {
+            log::error!("Failed to send packet to {}. Error: {e}", &addr);
+        }
+    }
 }
 
 fn init_logger() {

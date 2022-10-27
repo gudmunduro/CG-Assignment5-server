@@ -54,7 +54,14 @@ fn handle_packet(packet: GamePacket, socket: &UdpSocket, src: &SocketAddr, playe
             let player_id = last_player_id + 1;
             player_connections.push(PlayerConnection::new(player_id, *src));
             log::info!("Registered new player with id {player_id} and ip address {src}");
+            
+            // Inform the player of their player id
             try_send_packet(socket, src, &GamePacket::Inform { player_id });
+
+            // Inform all other players that a new player joined
+            for player in player_connections.iter().filter(|p| p.player_id != player_id) {
+                try_send_packet(socket, &player.address, &GamePacket::NewPlayer { player_id });
+            }
         }
         StatusUpdate(status) => {
             for player in player_connections.iter().filter(|p| p.address != *src) {
@@ -72,7 +79,7 @@ fn handle_packet(packet: GamePacket, socket: &UdpSocket, src: &SocketAddr, playe
             log::info!("Player count is now {}", player_connections.len());
         }
         // This should never be sent to the server
-        DropPlayer { .. } | Inform { .. } => (),
+        DropPlayer { .. } | Inform { .. } | NewPlayer { .. } => (),
     }
 
     Ok(())

@@ -19,23 +19,26 @@ impl Vector3 {
 
 #[derive(Clone)]
 pub struct StatusUpdate {
+    pub player_id: u8,
     pub position: Vector3,
     pub rotation: f32
 }
 
 impl StatusUpdate {
-    pub fn new(position: Vector3, rotation: f32) -> StatusUpdate {
-        StatusUpdate { position, rotation }
+    pub fn new(player_id: u8, position: Vector3, rotation: f32) -> StatusUpdate {
+        StatusUpdate { player_id, position, rotation }
     }
 
     pub fn binary_data(&self) -> Vec<u8> {
-        [vec![1u8], self.position.binary_data(), self.rotation.to_le_bytes().to_vec()].concat()
+        [vec![1u8, self.player_id], self.position.binary_data(), self.rotation.to_le_bytes().to_vec()].concat()
     }
 }
 
+#[derive(Clone)]
 pub enum GamePacket {
     Register,
     Inform { player_id: u8 },
+    NewPlayer { player_id: u8 },
     StatusUpdate(StatusUpdate),
     DropPlayer { player_id: u8 },
     End { player_id: u8 },
@@ -47,6 +50,7 @@ impl GamePacket {
         match self {
             Register => vec![0],
             Inform { player_id } => vec![5, *player_id],
+            NewPlayer { player_id } => vec![6, *player_id],
             StatusUpdate(s) => s.binary_data(),
             DropPlayer { player_id } => vec![4, *player_id],
             End { player_id } => vec![3, *player_id]

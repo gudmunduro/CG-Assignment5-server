@@ -21,16 +21,17 @@ impl Vector3 {
 pub struct StatusUpdate {
     pub player_id: u8,
     pub position: Vector3,
-    pub rotation: f32
+    pub rotation: f32,
+    pub steering_angle: f32
 }
 
 impl StatusUpdate {
-    pub fn new(player_id: u8, position: Vector3, rotation: f32) -> StatusUpdate {
-        StatusUpdate { player_id, position, rotation }
+    pub fn new(player_id: u8, position: Vector3, rotation: f32, steering_angle: f32) -> StatusUpdate {
+        StatusUpdate { player_id, position, rotation, steering_angle }
     }
 
     pub fn binary_data(&self) -> Vec<u8> {
-        [vec![1u8, self.player_id], self.position.binary_data(), self.rotation.to_le_bytes().to_vec()].concat()
+        [vec![1u8, self.player_id], self.position.binary_data(), self.rotation.to_le_bytes().to_vec(), self.steering_angle.to_le_bytes().to_vec()].concat()
     }
 }
 

@@ -26,8 +26,8 @@ pub fn parse_register(input: &[u8]) -> IResult<&[u8], GamePacket> {
 
 pub fn parse_status_update(input: &[u8]) -> IResult<&[u8], GamePacket> {
     map(
-        preceded(tag(&[1u8]), tuple((le_u8, parse_vector3, parse_float))),
-        |(player_id, pos, rot)| GamePacket::StatusUpdate(StatusUpdate::new(player_id, pos, rot)),
+        preceded(tag(&[1u8]), tuple((le_u8, parse_vector3, parse_float, parse_float))),
+        |(player_id, pos, rot, steering_angle)| GamePacket::StatusUpdate(StatusUpdate::new(player_id, pos, rot, steering_angle)),
     )(input)
 }
 

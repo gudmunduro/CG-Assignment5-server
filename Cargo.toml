@@ -10,3 +10,4 @@ nom = "7.1.1"
 log = "0.4.17"
 simplelog = "0.12.0"
 anyhow = "1.0.66"
+clap = { version = "4.0.18", features = ["derive"] }

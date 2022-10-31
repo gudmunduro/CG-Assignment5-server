@@ -1,21 +1,37 @@
-use std::{io, net::{UdpSocket, SocketAddr}};
+use std::{
+    io,
+    net::{SocketAddr, UdpSocket},
+};
 
+use clap::Parser;
 use simplelog::TermLogger;
 
-use crate::{parser::parse_packet, models::{GamePacket, PlayerConnection}};
+use crate::{
+    models::{GamePacket, PlayerConnection},
+    parser::parse_packet,
+};
 
 pub mod models;
 pub mod parser;
 
-const PORT: u32 = 5899;
+#[derive(Parser, Debug)]
+#[command(about = "Server for assignment 5 game", long_about = None)]
+struct Args {
+    #[clap(value_parser, default_value = "0.0.0.0")]
+    ip: String,
+    #[clap(value_parser, default_value_t = 5899)]
+    port: u32,
+}
+
 
 fn main() {
+    let args = Args::parse();
     init_logger();
 
-    let socket = UdpSocket::bind(format!("0.0.0.0:{PORT}")).expect("Failed to bind socket");
+    let socket = UdpSocket::bind(format!("{}:{}", &args.ip, args.port)).expect("Failed to bind socket");
     socket.set_nonblocking(true).unwrap();
 
-    log::info!("Server listening on {PORT}");
+    log::info!("Server listening on {}:{}", &args.ip, args.port);
 
     let mut player_connections = Vec::new();
     let mut buffer = [0u8; 3000];
@@ -46,7 +62,12 @@ fn main() {
     }
 }
 
-fn handle_packet(packet: GamePacket, socket: &UdpSocket, src: &SocketAddr, player_connections: &mut Vec<PlayerConnection>) -> anyhow::Result<()> {
+fn handle_packet(
+    packet: GamePacket,
+    socket: &UdpSocket,
+    src: &SocketAddr,
+    player_connections: &mut Vec<PlayerConnection>,
+) -> anyhow::Result<()> {
     use GamePacket::*;
     match packet {
         Register => {
@@ -59,20 +80,40 @@ fn handle_packet(packet: GamePacket, socket: &UdpSocket, src: &SocketAddr, playe
             try_send_packet(socket, src, &GamePacket::Inform { player_id });
 
             // Inform all other players that a new player joined, and inform the new player of all other players that have joined
-            for player in player_connections.iter().filter(|p| p.player_id != player_id) {
-                try_send_packet(socket, src, &GamePacket::NewPlayer { player_id: player.player_id });
-                try_send_packet(socket, &player.address, &GamePacket::NewPlayer { player_id });
+            for player in player_connections
+                .iter()
+                .filter(|p| p.player_id != player_id)
+            {
+                try_send_packet(
+                    socket,
+                    src,
+                    &GamePacket::NewPlayer {
+                        player_id: player.player_id,
+                    },
+                );
+                try_send_packet(
+                    socket,
+                    &player.address,
+                    &GamePacket::NewPlayer { player_id },
+                );
             }
         }
         StatusUpdate(status) => {
             for player in player_connections.iter().filter(|p| p.address != *src) {
-                try_send_packet(socket, &player.address, &GamePacket::StatusUpdate(status.clone()));
+                try_send_packet(
+                    socket,
+                    &player.address,
+                    &GamePacket::StatusUpdate(status.clone()),
+                );
             }
         }
         End { player_id } => {
             player_connections.retain(|p| p.player_id != player_id);
 
-            for player in player_connections.iter().filter(|p| p.player_id != player_id) {
+            for player in player_connections
+                .iter()
+                .filter(|p| p.player_id != player_id)
+            {
                 let drop_packet = GamePacket::DropPlayer { player_id };
                 try_send_packet(socket, &player.address, &drop_packet);
             }

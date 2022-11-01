@@ -7,11 +7,11 @@ use clap::Parser;
 use simplelog::TermLogger;
 
 use crate::{
-    models::{GamePacket, PlayerConnection},
+    packets::GamePacket,
     parser::parse_packet,
 };
 
-pub mod models;
+pub mod packets;
 pub mod parser;
 
 #[derive(Parser, Debug)]
@@ -21,6 +21,21 @@ struct Args {
     ip: String,
     #[clap(value_parser, default_value_t = 5899)]
     port: u32,
+    /// Number of laps needed to win
+    #[clap(long, default_value_t = 5)]
+    laps: u32,
+}
+
+pub struct PlayerConnection {
+    pub player_id: u8,
+    pub address: SocketAddr,
+    pub laps: u32,
+}
+
+impl PlayerConnection {
+    pub fn new(player_id: u8, address: SocketAddr) -> PlayerConnection {
+        PlayerConnection { player_id, address, laps: 0 }
+    }
 }
 
 
@@ -53,7 +68,7 @@ fn main() {
             }
         };
 
-        match handle_packet(packet, &socket, &src, &mut player_connections) {
+        match handle_packet(packet, &socket, &src, &mut player_connections, args.laps) {
             Ok(()) => (),
             Err(e) => {
                 log::error!("Failed to handle packet {e}");
@@ -67,6 +82,7 @@ fn handle_packet(
     socket: &UdpSocket,
     src: &SocketAddr,
     player_connections: &mut Vec<PlayerConnection>,
+    win_lap_count: u32,
 ) -> anyhow::Result<()> {
     use GamePacket::*;
     match packet {
@@ -107,6 +123,24 @@ fn handle_packet(
                 );
             }
         }
+        LapComplete { player_id } => {
+            let player = player_connections
+                .iter_mut()
+                .filter(|p| p.player_id == player_id)
+                .next();
+
+            if let Some(player) = player {
+                player.laps += 1;
+
+                if player.laps >= win_lap_count {
+                    log::info!("Player {player_id} won");
+                    broadcast_packet(socket, &player_connections, &GamePacket::Restart);
+                }
+            }
+            else {
+                log::error!("Player with id {player_id} not found, failed to increment lap count");
+            }
+        }
         End { player_id } => {
             player_connections.retain(|p| p.player_id != player_id);
 
@@ -121,18 +155,28 @@ fn handle_packet(
             log::info!("Player count is now {}", player_connections.len());
         }
         // This should never be sent to the server
-        DropPlayer { .. } | Inform { .. } | NewPlayer { .. } => (),
+        DropPlayer { .. } | Inform { .. } | NewPlayer { .. } | Restart => (),
     }
 
     Ok(())
 }
 
 fn try_send_packet(socket: &UdpSocket, addr: &SocketAddr, packet: &GamePacket) {
-    match socket.send_to(&packet.binary_data(), addr) {
+    match socket.send_to(&packet.to_binary_data(), addr) {
         Ok(_) => (),
         Err(e) => {
             log::error!("Failed to send packet to {}. Error: {e}", &addr);
         }
+    }
+}
+
+fn broadcast_packet(socket: &UdpSocket, player_connections: &Vec<PlayerConnection>, packet: &GamePacket) {
+    for player in player_connections {
+        try_send_packet(
+            socket,
+            &player.address,
+            &packet,
+        );
     }
 }
 
